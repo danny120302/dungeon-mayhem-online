@@ -39,7 +39,7 @@ function publicState(room, socketId) {
       uid: p.uid, name: p.name, heroId: p.heroId, isAI: false,
       hp: p.hp, hand: p.uid === socketId ? p.hand : [], handCount: p.hand.length,
       discardCount: p.discard.length, shields: p.shields, connected: !!io.sockets.sockets.get(p.uid)
-    }) : ({uid:null,name:'Open Slot',heroId:null,isAI:false,hp:10,hand:[],handCount:0,discardCount:0,shields:[],connected:false}))
+    }) : ({uid:null,name:'Open Slot',heroId:null,isAI:false,hp:0,hand:[],handCount:0,discardCount:0,shields:[],connected:false}))
   };
 }
 function broadcast(room) {
@@ -49,8 +49,19 @@ function error(socket, msg) { socket.emit('errorMessage', msg); }
 function alive(room) { return room.players.filter(Boolean).filter(p => p.hp > 0); }
 function nextTurn(room) {
   if (room.phase !== 'playing') return;
+  const living = alive(room);
+  if (living.length <= 1) { checkWin(room); return; }
+
   let i = room.currentTurnIndex;
-  do i = (i + 1) % room.players.length; while (room.players[i] && room.players[i].hp <= 0 && alive(room).length > 1);
+  for (let step = 1; step <= room.players.length; step++) {
+    const candidate = (i + step) % room.players.length;
+    const p = room.players[candidate];
+    if (p && p.hp > 0) {
+      i = candidate;
+      break;
+    }
+  }
+
   room.currentTurnIndex = i;
   room.playsRemaining = 1;
   const p = room.players[i];
@@ -123,7 +134,7 @@ function startGame(room) {
   room.phase='playing'; room.currentTurnIndex=0; room.playsRemaining=1; room.pending=null;
   room.logs.push('🎮 Host launched the match! Battle Begins!');
   for (const p of occupied) { p.hp=START_HP; p.deck=shuffle(HEROES[p.heroId].deck); p.hand=[]; p.discard=[]; p.shields=[]; draw(p,3); }
-  const first=room.players[0]; if (first) { draw(first,1); room.logs.push(`--- <strong>${first.name}</strong>'s Turn ---`); }
+  const first=occupied[0]; if (first) { room.currentTurnIndex=first.index; draw(first,1); room.logs.push(`--- <strong>${first.name}</strong>'s Turn ---`); }
   return { ok:true };
 }
 function handlePlayCard(room, socket, cardIndex) {

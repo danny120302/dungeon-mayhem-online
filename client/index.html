@@ -576,8 +576,9 @@
             window.state.players = (payload.players || []).map((p, idx) => ({
                 index: idx,
                 name: p.name,
-                hero: HEROES_DATA[p.heroId || 'AZZAN'],
+                hero: p.heroId ? HEROES_DATA[p.heroId] : null,
                 heroId: p.heroId,
+                isOccupied: !!p.uid,
                 isAI: !!p.isAI,
                 hp: p.hp ?? 10,
                 maxHp: 10,
@@ -620,7 +621,7 @@
             updateUI();
 
             if (payload.phase === 'finished') {
-                const winner = window.state.players.find(p => p.hp > 0);
+                const winner = window.state.players.find(p => p.isOccupied && p.hp > 0);
                 if (winner) {
                     document.getElementById('winner-text').innerText = `${winner.name} wins the battle!`;
                     document.getElementById('victory-modal').classList.remove('hidden');
@@ -1115,7 +1116,7 @@
             const container = document.getElementById('opponents-container');
             container.innerHTML = '';
 
-            const opponents = window.state.players.filter(p => p.index !== (window.state.mySlotIndex || 0));
+            const opponents = window.state.players.filter(p => p.isOccupied && p.index !== (window.state.mySlotIndex || 0));
             opponents.forEach(op => {
                 const isCurrentTurn = window.state.currentTurnIndex === op.index;
                 const isDead = op.hp <= 0;
