@@ -1,0 +1,1267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dungeon Mayhem - Multiplayer Web Edition</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800;900&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: #0b0f19;
+            color: #f8fafc;
+            user-select: none;
+            overflow-x: hidden;
+        }
+        
+        .font-fantasy {
+            font-family: 'Cinzel', serif;
+        }
+
+        .card-item {
+            transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease, border-color 0.2s ease;
+            transform-origin: bottom center;
+        }
+
+        .card-item:hover:not(.disabled) {
+            transform: translateY(-20px) scale(1.08) rotate(0deg) !important;
+            z-index: 50 !important;
+            box-shadow: 0 20px 30px -10px rgba(0, 0, 0, 0.8), 0 0 18px rgba(234, 179, 8, 0.6);
+        }
+
+        @keyframes damagePop {
+            0% { transform: scale(0.5) translateY(0); opacity: 0; }
+            30% { transform: scale(1.3) translateY(-15px); opacity: 1; }
+            100% { transform: scale(1) translateY(-45px); opacity: 0; }
+        }
+
+        .damage-float {
+            animation: damagePop 1.1s ease-out forwards;
+            pointer-events: none;
+        }
+
+        .fixed-log-scroll {
+            height: 180px;
+            max-height: 180px;
+            overflow-y: auto !important;
+            scroll-behavior: smooth;
+        }
+
+        .fixed-log-scroll::-webkit-scrollbar {
+            width: 5px;
+        }
+        .fixed-log-scroll::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.9);
+        }
+        .fixed-log-scroll::-webkit-scrollbar-thumb {
+            background: rgba(234, 179, 8, 0.5);
+            border-radius: 4px;
+        }
+
+        .hero-azzan { background: linear-gradient(135deg, #2e1065 0%, #581c87 100%); border-color: #a855f7; }
+        .hero-lia { background: linear-gradient(135deg, #713f12 0%, #a16207 100%); border-color: #eab308; }
+        .hero-sutha { background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 100%); border-color: #ef4444; }
+        .hero-oriax { background: linear-gradient(135deg, #14532d 0%, #166534 100%); border-color: #22c55e; }
+
+        .active-turn-ring {
+            box-shadow: 0 0 22px 4px #eab308;
+            animation: pulseGlow 2s infinite alternate;
+        }
+
+        @keyframes pulseGlow {
+            from { box-shadow: 0 0 15px 2px rgba(234, 179, 8, 0.6); }
+            to { box-shadow: 0 0 28px 8px rgba(234, 179, 8, 0.95); }
+        }
+
+        .modal-blur {
+            backdrop-filter: blur(8px);
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between overflow-x-hidden selection:bg-amber-500 selection:text-slate-950">
+
+    <header class="bg-slate-900/90 border-b border-slate-800 px-4 py-2.5 flex items-center justify-between z-30 shadow-lg">
+        <div class="flex items-center space-x-3">
+            <div class="bg-amber-500 text-slate-950 font-black px-2.5 py-1 rounded tracking-wider text-sm font-fantasy shadow-md flex items-center gap-2">
+                <i class="fa-solid fa-dungeon"></i> DUNGEON MAYHEM
+            </div>
+            <span id="header-room-badge" class="hidden px-2 py-0.5 rounded bg-slate-800 text-amber-400 font-mono text-xs border border-slate-700">ROOM: ----</span>
+        </div>
+        
+        <div class="flex items-center space-x-2">
+            <button id="btn-sound-toggle" onclick="toggleSound()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition">
+                <i id="sound-icon" class="fa-solid fa-volume-high text-amber-400"></i>
+                <span class="hidden md:inline">Audio</span>
+            </button>
+            <button onclick="showRulesModal()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center gap-1.5 transition">
+                <i class="fa-solid fa-book-open text-amber-400"></i>
+                <span>Rules</span>
+            </button>
+            <button id="btn-reset-match" onclick="resetRoomMatch()" class="hidden px-3 py-1.5 rounded-lg bg-rose-900/40 hover:bg-rose-800/60 border border-rose-700/50 text-rose-200 text-xs font-semibold flex items-center gap-1.5 transition shadow-sm">
+                <i class="fa-solid fa-rotate-right"></i>
+                <span>Reset Match</span>
+            </button>
+        </div>
+    </header>
+
+    <div id="setup-screen" class="fixed inset-0 bg-slate-950 z-50 flex flex-col items-center justify-center p-4 overflow-y-auto">
+        <div class="max-w-4xl w-full my-auto py-6">
+            <div class="text-center mb-8">
+                <h1 class="text-4xl md:text-6xl font-black font-fantasy text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-400 to-amber-600 drop-shadow-md">
+                    DUNGEON MAYHEM
+                </h1>
+                <p class="text-slate-400 text-sm md:text-base mt-2">Multiplayer Arena & Real-time Synchronization</p>
+            </div>
+
+            <!-- Mode Selector Tabs -->
+            <div class="flex justify-center gap-3 mb-6">
+                <button id="tab-btn-single" onclick="switchModeTab('single')" class="px-5 py-2.5 rounded-xl text-sm font-bold bg-amber-500 text-slate-950 shadow-lg font-fantasy transition">
+                    <i class="fa-solid fa-user-astronaut mr-1.5"></i> Single Player vs AI
+                </button>
+                <button id="tab-btn-multi" onclick="switchModeTab('multi')" class="px-5 py-2.5 rounded-xl text-sm font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 font-fantasy transition">
+                    <i class="fa-solid fa-users mr-1.5"></i> Online Multiplayer
+                </button>
+            </div>
+
+            <!-- Single Player Config Panel -->
+            <div id="panel-single-config" class="bg-slate-900/80 border border-slate-800 p-4 md:p-6 rounded-2xl shadow-2xl mb-8">
+                <div class="flex flex-col md:flex-row items-center justify-between gap-4 pb-4 border-b border-slate-800">
+                    <div>
+                        <h3 class="font-bold text-amber-400 text-lg font-fantasy">Practice Match Configuration</h3>
+                        <p class="text-xs text-slate-400">Battle against AI bots locally</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="setPlayerCount(2)" id="btn-count-2" class="px-4 py-2 rounded-xl text-sm font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 transition">2 Players</button>
+                        <button onclick="setPlayerCount(3)" id="btn-count-3" class="px-4 py-2 rounded-xl text-sm font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 transition">3 Players</button>
+                        <button onclick="setPlayerCount(4)" id="btn-count-4" class="px-4 py-2 rounded-xl text-sm font-bold bg-amber-500 text-slate-950 shadow-lg transition">4 Players</button>
+                    </div>
+                </div>
+
+                <div id="hero-select-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+                    <!-- Dynamic Hero Cards -->
+                </div>
+            </div>
+
+            <!-- Multiplayer Lobby Panel -->
+            <div id="panel-multi-config" class="hidden bg-slate-900/80 border border-slate-800 p-4 md:p-6 rounded-2xl shadow-2xl mb-8">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="bg-slate-950/60 p-5 rounded-xl border border-slate-800 flex flex-col justify-between">
+                        <div>
+                            <h3 class="font-bold text-amber-400 text-lg font-fantasy mb-1">Create Multiplayer Room</h3>
+                            <p class="text-xs text-slate-400 mb-4">Host a room and invite up to 3 friends using a room code.</p>
+                        </div>
+                        <button onclick="createMultiplayerRoom()" class="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-sm font-fantasy shadow-lg transition">
+                            CREATE ROOM <i class="fa-solid fa-plus ml-1"></i>
+                        </button>
+                    </div>
+
+                    <div class="bg-slate-950/60 p-5 rounded-xl border border-slate-800 flex flex-col justify-between">
+                        <div>
+                            <h3 class="font-bold text-amber-400 text-lg font-fantasy mb-1">Join Existing Room</h3>
+                            <p class="text-xs text-slate-400 mb-2">Enter 4-character Room Code:</p>
+                            <input id="input-room-code" type="text" placeholder="e.g. A0B1" maxlength="6" class="w-full bg-slate-900 border border-slate-700 px-4 py-2.5 rounded-xl font-mono text-center text-lg uppercase tracking-widest text-amber-300 focus:outline-none focus:border-amber-400 mb-4">
+                        </div>
+                        <button onclick="joinMultiplayerRoom()" class="w-full py-3 bg-slate-800 hover:bg-slate-700 text-amber-400 font-bold rounded-xl text-sm font-fantasy border border-amber-500/30 transition">
+                            JOIN ROOM <i class="fa-solid fa-right-to-bracket ml-1"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Lobby Waiting Room View -->
+                <div id="lobby-waiting-view" class="hidden mt-6 pt-6 border-t border-slate-800">
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <span class="text-xs text-slate-400">ROOM CODE</span>
+                            <h2 id="lobby-code-display" class="text-3xl font-black font-mono text-amber-400 tracking-wider"></h2>
+                        </div>
+                        <div id="lobby-status-tag" class="px-3 py-1 rounded-full bg-amber-950 border border-amber-800 text-amber-300 text-xs font-bold">
+                            Waiting for players...
+                        </div>
+                    </div>
+
+                    <div id="lobby-slots-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 my-4">
+                        <!-- Dynamic Slots -->
+                    </div>
+
+                    <!-- Hero Draft Selector inside Lobby -->
+                    <div class="mt-4 pt-4 border-t border-slate-800">
+                        <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Choose Your Hero Draft:</h4>
+                        <div id="lobby-hero-select" class="grid grid-cols-2 sm:grid-cols-4 gap-2"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="text-center">
+                <button id="btn-start-game" onclick="startGame()" class="px-10 py-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xl rounded-2xl shadow-xl hover:shadow-amber-500/25 transform hover:-translate-y-1 transition duration-200 font-fantasy">
+                    ENTER THE DUNGEON <i class="fa-solid fa-play ml-2"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <main id="game-screen" class="hidden flex-1 relative flex flex-col justify-between max-w-7xl w-full mx-auto p-2 sm:p-4 gap-3">
+        
+        <!-- Opponents Container (Top Row) -->
+        <div id="opponents-container" class="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
+            <!-- Rendered dynamically -->
+        </div>
+
+        <!-- Center Play Arena & Battle Log Container -->
+        <div class="flex-1 my-2 grid grid-cols-1 lg:grid-cols-4 gap-3 items-stretch">
+            
+            <div class="lg:col-span-3 bg-slate-900/60 border border-slate-800/80 rounded-2xl p-4 flex flex-col justify-between relative overflow-hidden backdrop-blur-sm min-h-[200px]">
+                
+                <div id="damage-float-layer" class="absolute inset-0 pointer-events-none z-40 overflow-hidden"></div>
+
+                <div class="flex items-center justify-between border-b border-slate-800/60 pb-2 mb-2">
+                    <div class="flex items-center gap-2">
+                        <span id="turn-badge" class="px-3 py-1 rounded-full text-xs font-black tracking-wider bg-amber-500 text-slate-950 uppercase font-fantasy">
+                            Your Turn
+                        </span>
+                        <span id="current-player-name" class="font-bold text-sm text-slate-200"></span>
+                    </div>
+                    <div id="action-tracker" class="flex items-center gap-2 text-xs text-amber-400 font-bold bg-amber-950/40 border border-amber-800/40 px-3 py-1 rounded-lg">
+                        <i class="fa-solid fa-bolt text-amber-400"></i> Plays left: <span id="plays-left-count" class="text-sm text-white font-extrabold">1</span>
+                    </div>
+                </div>
+
+                <div class="flex-1 flex items-center justify-center py-2 relative">
+                    <div id="played-cards-stack" class="flex flex-wrap gap-3 items-center justify-center min-h-[90px]">
+                        <div class="text-slate-600 text-xs italic font-semibold tracking-wide flex items-center gap-2">
+                            <i class="fa-solid fa-hand-pointer"></i> Play cards from your hand to strike!
+                        </div>
+                    </div>
+                </div>
+
+                <div id="action-prompt" class="bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-2 text-xs md:text-sm text-center text-amber-300 font-semibold shadow-inner">
+                    Select a card from your hand to play.
+                </div>
+            </div>
+
+            <!-- Fixed Non-Growing Battle Log -->
+            <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-3 flex flex-col h-auto justify-between shadow-xl">
+                <div class="flex items-center justify-between pb-2 mb-1 border-b border-slate-800 text-xs font-bold text-slate-400">
+                    <span><i class="fa-solid fa-list-ul mr-1.5 text-amber-400"></i> Combat Log</span>
+                    <button onclick="clearLog()" class="text-[10px] text-slate-500 hover:text-slate-300 transition">Clear</button>
+                </div>
+                <div id="log-content" class="fixed-log-scroll space-y-1.5 text-xs text-slate-300 pr-1">
+                    <!-- Dynamic Battle Logs -->
+                </div>
+            </div>
+        </div>
+
+        <div id="human-player-area" class="bg-slate-900/90 border border-slate-800/90 rounded-2xl p-3 sm:p-4 shadow-2xl relative">
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-2 mb-2">
+                <div class="flex items-center gap-3 w-full sm:w-auto">
+                    <div id="human-avatar" class="w-10 h-10 rounded-xl border-2 flex items-center justify-center font-bold text-lg shadow-md shrink-0">
+                        🧙
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h3 id="human-name" class="font-extrabold text-sm sm:text-base text-white font-fantasy"></h3>
+                            <span id="human-class-title" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-amber-400 border border-slate-700"></span>
+                        </div>
+                        <div class="flex items-center gap-2 mt-0.5">
+                            <div class="w-28 sm:w-36 h-3 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                                <div id="human-hp-bar" class="h-full bg-gradient-to-r from-emerald-500 to-green-400 transition-all duration-300" style="width: 100%;"></div>
+                            </div>
+                            <span id="human-hp-text" class="text-xs font-black text-emerald-400">10 / 10 HP</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-4 text-xs font-semibold text-slate-400 self-end sm:self-center">
+                    <div class="flex items-center gap-1.5 bg-slate-950/60 px-2.5 py-1 rounded-lg border border-slate-800">
+                        <i class="fa-solid fa-layer-group text-amber-500"></i> Deck: <span id="human-deck-count" class="text-white font-bold">0</span>
+                    </div>
+                    <div class="flex items-center gap-1.5 bg-slate-950/60 px-2.5 py-1 rounded-lg border border-slate-800">
+                        <i class="fa-solid fa-box-archive text-slate-400"></i> Discard: <span id="human-discard-count" class="text-white font-bold">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <div id="human-shields-row" class="min-h-[32px] flex items-center gap-2 mb-2 pt-1 border-t border-slate-800/50">
+                <span class="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Active Shields:</span>
+                <div id="human-shields-list" class="flex flex-wrap gap-2">
+                    <span class="text-xs text-slate-600 italic">No active shields deployed</span>
+                </div>
+            </div>
+
+            <div id="human-hand" class="flex justify-center items-end gap-2 sm:gap-3 pt-2 pb-1 overflow-x-auto min-h-[140px] sm:min-h-[170px]">
+                <!-- Dynamic Player Hand -->
+            </div>
+        </div>
+
+    </main>
+
+    <div id="target-modal" class="fixed inset-0 bg-slate-950/80 modal-blur z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl text-center">
+            <h3 id="target-modal-title" class="text-xl font-extrabold text-amber-400 font-fantasy mb-2">Choose Your Target</h3>
+            <p id="target-modal-desc" class="text-slate-300 text-xs mb-6">Select an opponent or active shield to strike.</p>
+            <div id="target-options-list" class="space-y-2 mb-6 max-h-60 overflow-y-auto pr-1">
+                <!-- Choices -->
+            </div>
+            <button onclick="cancelTargeting()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition">
+                Cancel Play
+            </button>
+        </div>
+    </div>
+
+    <div id="rules-modal" class="fixed inset-0 bg-slate-950/80 modal-blur z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-xl w-full p-6 shadow-2xl flex flex-col max-h-[85vh]">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+                <h3 class="text-lg font-black text-amber-400 font-fantasy flex items-center gap-2">
+                    <i class="fa-solid fa-book-open"></i> Dungeon Mayhem Rules
+                </h3>
+                <button onclick="hideRulesModal()" class="text-slate-400 hover:text-white text-lg"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="flex-1 overflow-y-auto py-4 space-y-4 text-xs text-slate-300 leading-relaxed pr-2">
+                <div>
+                    <h4 class="font-bold text-amber-300 text-sm mb-1">Objective</h4>
+                    <p>Eliminate all other adventurers! The last surviving hero with HP > 0 wins the round.</p>
+                </div>
+                <div>
+                    <h4 class="font-bold text-amber-300 text-sm mb-1">Multiplayer Rules</h4>
+                    <p>Room hosts can create games, share room codes, and fill empty slots with AI bots if desired. Turns synchronize in real-time across all connected clients.</p>
+                </div>
+            </div>
+            <div class="pt-3 border-t border-slate-800 text-right">
+                <button onclick="hideRulesModal()" class="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl">Got it!</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="victory-modal" class="fixed inset-0 bg-slate-950/90 modal-blur z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border-2 border-amber-500 rounded-3xl max-w-md w-full p-8 shadow-2xl text-center">
+            <div class="w-20 h-20 mx-auto mb-4 rounded-2xl bg-gradient-to-tr from-amber-500 to-yellow-300 text-slate-950 flex items-center justify-center text-4xl shadow-xl">
+                🏆
+            </div>
+            <h2 class="text-3xl font-black text-amber-400 font-fantasy mb-1">VICTORY!</h2>
+            <p id="winner-text" class="text-lg font-bold text-slate-200 mb-6"></p>
+            
+            <div id="victory-stats" class="bg-slate-950/60 rounded-xl p-4 border border-slate-800 mb-6 text-xs text-left space-y-1.5">
+                <!-- Stats -->
+            </div>
+
+            <button onclick="resetRoomMatch()" class="w-full py-3.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-base shadow-lg font-fantasy transition">
+                REMATCH <i class="fa-solid fa-rotate-right ml-1"></i>
+            </button>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        let multiplayerConnected = false;
+        let currentUser = { uid: null };
+
+        socket.on('connect', () => {
+            multiplayerConnected = true;
+            currentUser.uid = socket.id;
+            console.log('Connected to multiplayer server:', socket.id);
+        });
+        socket.on('disconnect', () => {
+            multiplayerConnected = false;
+        });
+
+        // Game Constants & Hero Decks
+        const HEROES_DATA = {
+            AZZAN: {
+                id: 'AZZAN', name: 'Azzan', title: 'The Wizard', avatar: '🧙‍♂️', colorClass: 'hero-azzan', description: 'Master of arcane power, fireballs, and sneaky HP swaps.',
+                deck: [
+                    { id: 'az_1', name: 'Magic Missile', icons: ['attack', 'attack'], shieldHp: 0, text: 'Deal 2 Attack damage.' },
+                    { id: 'az_2', name: 'Magic Missile', icons: ['attack', 'attack'], shieldHp: 0, text: 'Deal 2 Attack damage.' },
+                    { id: 'az_3', name: 'Fireball', icons: ['attack', 'attack', 'attack'], shieldHp: 0, text: 'Deal 3 Attack damage.' },
+                    { id: 'az_4', name: 'Vampiric Touch', icons: ['attack', 'heal'], shieldHp: 0, text: 'Deal 1 Attack & Heal 1 HP.' },
+                    { id: 'az_5', name: 'Mage Armor', icons: ['shield'], shieldHp: 3, text: 'Defense Shield (3 HP).' },
+                    { id: 'az_6', name: 'Mage Armor', icons: ['shield'], shieldHp: 2, text: 'Defense Shield (2 HP).' },
+                    { id: 'az_7', name: 'Speed of Thought', icons: ['draw', 'bolt', 'bolt'], shieldHp: 0, text: 'Draw 1 card and play 2 extra cards.' },
+                    { id: 'az_8', name: 'Knowledge is Power', icons: ['draw', 'draw', 'bolt'], shieldHp: 0, text: 'Draw 2 cards and play 1 extra card.' },
+                    { id: 'az_9', name: 'Charm Person', icons: ['draw', 'bolt'], shieldHp: 0, text: 'Draw a card & play extra turn.' },
+                    { id: 'az_10', name: 'Vanish', icons: ['shield', 'draw'], shieldHp: 2, text: 'Shield (2 HP) + Draw 1 card.' },
+                    { id: 'az_11', name: 'Vampiric Drain', icons: ['attack', 'attack', 'heal'], shieldHp: 0, text: 'Deal 2 Attack & Heal 1 HP.' },
+                    { id: 'az_12', name: 'Vampiric Drain', icons: ['attack', 'heal', 'heal'], shieldHp: 0, text: 'Deal 1 Attack & Heal 2 HP.' },
+                    { id: 'az_13', name: 'Swap Hit Points!', icons: ['special_swap'], shieldHp: 0, text: 'ULTIMATE: Swap your current HP with chosen opponent!' }
+                ]
+            },
+            LIA: {
+                id: 'LIA', name: 'Lia', title: 'The Paladin', avatar: '🛡️', colorClass: 'hero-lia', description: 'Holy champion focused on healing, holy smites, and divine armor.',
+                deck: [
+                    { id: 'lia_1', name: 'Smite', icons: ['attack', 'attack'], shieldHp: 0, text: 'Deal 2 Attack damage.' },
+                    { id: 'lia_2', name: 'Smite', icons: ['attack', 'attack'], shieldHp: 0, text: 'Deal 2 Attack damage.' },
+                    { id: 'lia_3', name: 'Holy Shield', icons: ['shield'], shieldHp: 3, text: 'Defense Shield (3 HP).' },
+                    { id: 'lia_4', name: 'Holy Shield', icons: ['shield'], shieldHp: 3, text: 'Defense Shield (3 HP).' },
+                    { id: 'lia_5', name: 'Lay on Hands', icons: ['heal', 'heal'], shieldHp: 0, text: 'Heal 2 HP.' },
+                    { id: 'lia_6', name: 'Lay on Hands', icons: ['heal', 'heal', 'bolt'], shieldHp: 0, text: 'Heal 2 HP + Play 1 extra card.' },
+                    { id: 'lia_7', name: 'Divine Protection', icons: ['shield', 'heal'], shieldHp: 2, text: 'Shield (2 HP) + Heal 1 HP.' },
+                    { id: 'lia_8', name: 'Banishing Smite', icons: ['attack', 'attack', 'attack'], shieldHp: 0, text: 'Deal 3 Attack damage.' },
+                    { id: 'lia_9', name: 'For the Cause!', icons: ['draw', 'bolt'], shieldHp: 0, text: 'Draw 1 card + Play 1 extra card.' },
+                    { id: 'lia_10', name: 'Cure Wounds', icons: ['heal', 'draw'], shieldHp: 0, text: 'Heal 1 HP + Draw 1 card.' },
+                    { id: 'lia_11', name: 'Finger of Death', icons: ['attack', 'bolt'], shieldHp: 0, text: 'Deal 1 Attack + Play 1 extra card.' },
+                    { id: 'lia_12', name: 'High Shield', icons: ['shield'], shieldHp: 4, text: 'Heavy Shield (4 HP).' },
+                    { id: 'lia_13', name: 'Divine Health', icons: ['special_full_heal'], shieldHp: 0, text: 'ULTIMATE: Heal back to maximum (10 HP)!' }
+                ]
+            },
+            SUTHA: {
+                id: 'SUTHA', name: 'Sutha', title: 'The Barbarian', avatar: '🪓', colorClass: 'hero-sutha', description: 'Fierce warrior delivering brutal melee strikes and high impact.',
+                deck: [
+                    { id: 'su_1', name: 'Slash', icons: ['attack', 'attack'], shieldHp: 0, text: 'Deal 2 Attack damage.' },
+                    { id: 'su_2', name: 'Slash', icons: ['attack', 'attack'], shieldHp: 0, text: 'Deal 2 Attack damage.' },
+                    { id: 'su_3', name: 'Heavy Axe Strike', icons: ['attack', 'attack', 'attack'], shieldHp: 0, text: 'Deal 3 Attack damage.' },
+                    { id: 'su_4', name: 'Headbutt', icons: ['attack', 'bolt'], shieldHp: 0, text: 'Deal 1 Attack + Play 1 extra card.' },
+                    { id: 'su_5', name: 'Spiked Shield', icons: ['shield', 'attack'], shieldHp: 2, text: 'Shield (2 HP) + Deal 1 Attack.' },
+                    { id: 'su_6', name: 'Spiked Shield', icons: ['shield', 'attack'], shieldHp: 2, text: 'Shield (2 HP) + Deal 1 Attack.' },
+                    { id: 'su_7', name: 'Battle Cry', icons: ['draw', 'bolt', 'bolt'], shieldHp: 0, text: 'Draw 1 card + Play 2 extra cards.' },
+                    { id: 'su_8', name: 'Whirlwind', icons: ['attack', 'attack', 'bolt'], shieldHp: 0, text: 'Deal 2 Attack + Play 1 extra card.' },
+                    { id: 'su_9', name: 'Snack Break', icons: ['heal', 'heal'], shieldHp: 0, text: 'Heal 2 HP.' },
+                    { id: 'su_10', name: 'Thick Hide', icons: ['shield'], shieldHp: 3, text: 'Defense Shield (3 HP).' },
+                    { id: 'su_11', name: 'Rage!', icons: ['attack', 'draw', 'bolt'], shieldHp: 0, text: 'Deal 1 Attack, Draw 1 & Play 1 card.' },
+                    { id: 'su_12', name: 'Brutal Cleave', icons: ['attack', 'attack', 'attack'], shieldHp: 0, text: 'Deal 3 Attack damage.' },
+                    { id: 'su_13', name: 'Devastating Smash!', icons: ['special_smash'], shieldHp: 0, text: 'ULTIMATE: Destroy ALL opponent shields instantly!' }
+                ]
+            },
+            ORIAX: {
+                id: 'ORIAX', name: 'Oriax', title: 'The Rogue', avatar: '🗡️', colorClass: 'hero-oriax', description: 'Tricky tiefling rogue specializing in multi-play combos and card theft.',
+                deck: [
+                    { id: 'or_1', name: 'Backstab', icons: ['attack', 'attack'], shieldHp: 0, text: 'Deal 2 Attack damage.' },
+                    { id: 'or_2', name: 'Sneak Attack', icons: ['attack', 'bolt'], shieldHp: 0, text: 'Deal 1 Attack + Play 1 extra card.' },
+                    { id: 'or_3', name: 'Cunning Action', icons: ['draw', 'bolt', 'bolt'], shieldHp: 0, text: 'Draw 1 card + Play 2 extra cards.' },
+                    { id: 'or_4', name: 'Cunning Action', icons: ['draw', 'bolt', 'bolt'], shieldHp: 0, text: 'Draw 1 card + Play 2 extra cards.' },
+                    { id: 'or_5', name: 'Parry', icons: ['shield'], shieldHp: 2, text: 'Defense Shield (2 HP).' },
+                    { id: 'or_6', name: 'Smoke Bomb', icons: ['shield', 'draw'], shieldHp: 2, text: 'Shield (2 HP) + Draw 1 card.' },
+                    { id: 'or_7', name: 'Poison Dagger', icons: ['attack', 'heal'], shieldHp: 0, text: 'Deal 1 Attack & Heal 1 HP.' },
+                    { id: 'or_8', name: 'Crossbow Shot', icons: ['attack', 'attack'], shieldHp: 0, text: 'Deal 2 Attack damage.' },
+                    { id: 'or_9', name: 'Health Potion', icons: ['heal', 'draw'], shieldHp: 0, text: 'Heal 1 HP + Draw 1 card.' },
+                    { id: 'or_10', name: 'My Shield Now!', icons: ['shield'], shieldHp: 3, text: 'Defense Shield (3 HP).' },
+                    { id: 'or_11', name: 'Rapid Daggers', icons: ['attack', 'attack', 'bolt'], shieldHp: 0, text: 'Deal 2 Attack + Play 1 extra card.' },
+                    { id: 'or_12', name: 'Flurry of Blades', icons: ['attack', 'attack', 'draw'], shieldHp: 0, text: 'Deal 2 Attack & Draw 1 card.' },
+                    { id: 'or_13', name: 'Thieves\' Cant / Steal', icons: ['special_steal', 'bolt'], shieldHp: 0, text: 'ULTIMATE: Draw 2 extra cards & gain extra play turn!' }
+                ]
+            }
+        };
+
+        window.state = {
+            mode: 'single', // 'single' or 'multi'
+            roomCode: null,
+            hostUid: null,
+            mySlotIndex: 0,
+            totalPlayersCount: 4,
+            humanHeroId: 'AZZAN',
+            players: [],
+            currentTurnIndex: 0,
+            playsRemaining: 1,
+            isGameOver: false,
+            soundEnabled: true,
+            logs: [],
+            aiTimeout: null,
+            roomUnsubscribe: null
+        };
+
+        const AudioFX = {
+            ctx: null,
+            init() {
+                if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+            },
+            playBeep(freq = 440, type = 'sine', duration = 0.15, vol = 0.1) {
+                if (!window.state.soundEnabled) return;
+                try {
+                    this.init();
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = type;
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                    gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + duration);
+                } catch(e) {}
+            },
+            playAttack() { this.playBeep(180, 'sawtooth', 0.2, 0.15); },
+            playShield() { this.playBeep(320, 'triangle', 0.25, 0.12); },
+            playHeal() { this.playBeep(580, 'sine', 0.3, 0.12); },
+            playDraw() { this.playBeep(400, 'sine', 0.1, 0.08); },
+            playSpecial() { this.playBeep(750, 'square', 0.35, 0.12); }
+        };
+
+        window.toggleSound = function() {
+            window.state.soundEnabled = !window.state.soundEnabled;
+            const icon = document.getElementById('sound-icon');
+            icon.className = window.state.soundEnabled ? "fa-solid fa-volume-high text-amber-400" : "fa-solid fa-volume-xmark text-slate-500";
+        };
+
+        window.switchModeTab = function(mode) {
+            window.state.mode = mode;
+            const singleBtn = document.getElementById('tab-btn-single');
+            const multiBtn = document.getElementById('tab-btn-multi');
+            const singlePanel = document.getElementById('panel-single-config');
+            const multiPanel = document.getElementById('panel-multi-config');
+
+            if (mode === 'single') {
+                singleBtn.className = "px-5 py-2.5 rounded-xl text-sm font-bold bg-amber-500 text-slate-950 shadow-lg font-fantasy transition";
+                multiBtn.className = "px-5 py-2.5 rounded-xl text-sm font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 font-fantasy transition";
+                singlePanel.classList.remove('hidden');
+                multiPanel.classList.add('hidden');
+                document.getElementById('btn-start-game').classList.remove('hidden');
+            } else {
+                multiBtn.className = "px-5 py-2.5 rounded-xl text-sm font-bold bg-amber-500 text-slate-950 shadow-lg font-fantasy transition";
+                singleBtn.className = "px-5 py-2.5 rounded-xl text-sm font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 font-fantasy transition";
+                multiPanel.classList.remove('hidden');
+                singlePanel.classList.add('hidden');
+                document.getElementById('btn-start-game').classList.add('hidden');
+            }
+        };
+
+        window.setPlayerCount = function(count) {
+            window.state.totalPlayersCount = count;
+            [2,3,4].forEach(c => {
+                const btn = document.getElementById(`btn-count-${c}`);
+                btn.className = c === count ? 
+                    "px-4 py-2 rounded-xl text-sm font-bold bg-amber-500 text-slate-950 shadow-lg transition" : 
+                    "px-4 py-2 rounded-xl text-sm font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 transition";
+            });
+        };
+
+        function renderHeroSelection() {
+            const grid = document.getElementById('hero-select-grid');
+            grid.innerHTML = '';
+
+            Object.values(HEROES_DATA).forEach(hero => {
+                const isSelected = hero.id === window.state.humanHeroId;
+                const card = document.createElement('div');
+                card.className = `cursor-pointer p-4 rounded-2xl border-2 transition-all duration-200 flex flex-col justify-between ${hero.colorClass} ${
+                    isSelected ? 'ring-4 ring-amber-400 scale-105 border-amber-300 shadow-2xl' : 'opacity-85 hover:opacity-100 hover:scale-102 border-transparent'
+                }`;
+                card.onclick = () => {
+                    window.state.humanHeroId = hero.id;
+                    renderHeroSelection();
+                };
+
+                card.innerHTML = `
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-3xl">${hero.avatar}</span>
+                            <span class="text-xs font-black uppercase px-2 py-0.5 rounded bg-slate-950/60 border border-slate-700 text-amber-400 font-fantasy">${hero.title}</span>
+                        </div>
+                        <h4 class="text-xl font-black text-white font-fantasy">${hero.name}</h4>
+                        <p class="text-xs text-slate-200/80 mt-2 leading-relaxed">${hero.description}</p>
+                    </div>
+                    <div class="mt-4 pt-3 border-t border-white/10 flex justify-between items-center text-xs font-bold text-amber-200">
+                        <span>Deck: ${hero.deck.length} Cards</span>
+                        ${isSelected ? '<i class="fa-solid fa-circle-check text-amber-400 text-base"></i>' : '<span class="text-[10px] text-slate-300">Select</span>'}
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+        renderHeroSelection();
+
+        function syncServerState(payload) {
+            if (!payload) return;
+            window.state.mode = 'multi';
+            window.state.roomCode = payload.roomCode;
+            window.state.mySlotIndex = payload.mySlotIndex;
+            window.state.hostUid = payload.hostUid;
+            window.state.players = (payload.players || []).map((p, idx) => ({
+                index: idx,
+                name: p.name,
+                hero: HEROES_DATA[p.heroId || 'AZZAN'],
+                heroId: p.heroId,
+                isAI: !!p.isAI,
+                hp: p.hp ?? 10,
+                maxHp: 10,
+                deck: p.deck || [],
+                hand: p.hand || [],
+                handCount: p.handCount ?? (p.hand || []).length,
+                discard: p.discard || [],
+                discardCount: p.discardCount ?? (p.discard || []).length,
+                shields: p.shields || [],
+                connected: p.connected !== false
+            }));
+            window.state.currentTurnIndex = payload.currentTurnIndex ?? 0;
+            window.state.playsRemaining = payload.playsRemaining ?? 1;
+            window.state.isGameOver = payload.phase === 'finished';
+
+            const setup = document.getElementById('setup-screen');
+            const game = document.getElementById('game-screen');
+            if (payload.phase === 'playing' || payload.phase === 'finished') {
+                setup.classList.add('hidden');
+                game.classList.remove('hidden');
+                document.getElementById('btn-reset-match').classList.remove('hidden');
+            } else {
+                setup.classList.remove('hidden');
+                game.classList.add('hidden');
+                document.getElementById('btn-reset-match').classList.add('hidden');
+            }
+
+            const badge = document.getElementById('header-room-badge');
+            badge.innerText = `ROOM: ${payload.roomCode}`;
+            badge.classList.remove('hidden');
+            document.getElementById('lobby-waiting-view').classList.toggle('hidden', payload.phase !== 'lobby');
+            document.getElementById('lobby-code-display').innerText = payload.roomCode || '';
+
+            if (payload.logs) {
+                const logContent = document.getElementById('log-content');
+                logContent.innerHTML = '';
+                payload.logs.forEach(l => logMessage(l, 'action', false));
+            }
+            renderLobbyView(payload);
+            updateUI();
+
+            if (payload.phase === 'finished') {
+                const winner = window.state.players.find(p => p.hp > 0);
+                if (winner) {
+                    document.getElementById('winner-text').innerText = `${winner.name} wins the battle!`;
+                    document.getElementById('victory-modal').classList.remove('hidden');
+                }
+            }
+        }
+
+        socket.on('roomState', syncServerState);
+        socket.on('errorMessage', msg => alert(msg));
+        socket.on('targetOptions', payload => {
+            const modal = document.getElementById('target-modal');
+            const list = document.getElementById('target-options-list');
+            document.getElementById('target-modal-title').innerText = payload.title || 'Choose Your Target';
+            document.getElementById('target-modal-desc').innerText = payload.description || 'Select a target.';
+            list.innerHTML = '';
+            payload.options.forEach(t => {
+                const btn = document.createElement('button');
+                btn.className = 'w-full py-3 px-4 bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-200 font-bold text-sm rounded-xl transition text-left flex items-center justify-between border border-slate-700';
+                btn.innerHTML = `<span>${t.label}</span><i class="fa-solid fa-crosshairs"></i>`;
+                btn.onclick = () => { modal.classList.add('hidden'); socket.emit('resolveTarget', { target: t }); };
+                list.appendChild(btn);
+            });
+            modal.classList.remove('hidden');
+        });
+
+        window.createMultiplayerRoom = function() {
+            if (!multiplayerConnected) return alert('Connecting to the game server...');
+            socket.emit('createRoom', { playerName: 'Player 1 (Host)', heroId: window.state.humanHeroId });
+        };
+
+        window.joinMultiplayerRoom = function() {
+            if (!multiplayerConnected) return alert('Connecting to the game server...');
+            const code = document.getElementById('input-room-code').value.trim().toUpperCase();
+            if (!code) return alert('Please enter a room code.');
+            socket.emit('joinRoom', { roomCode: code, playerName: 'Player' });
+        };
+
+        window.leaveMultiplayerRoom = function() {
+            socket.emit('leaveRoom');
+            window.state.roomCode = null;
+            document.getElementById('header-room-badge').classList.add('hidden');
+        };
+
+        function renderLobbyView(data) {
+            const grid = document.getElementById('lobby-slots-grid');
+            if (!grid || !data.players) return;
+            grid.innerHTML = '';
+            data.players.forEach((p, idx) => {
+                const isMe = idx === window.state.mySlotIndex;
+                const slot = document.createElement('div');
+                slot.className = `p-3 rounded-xl border text-xs flex flex-col justify-between ${p.uid ? 'bg-slate-900 border-amber-500/50' : 'bg-slate-950 border-slate-800'}`;
+                slot.innerHTML = `<div class="flex items-center justify-between mb-2"><span class="font-bold text-amber-400 font-fantasy">Slot ${idx + 1}</span>${isMe ? '<span class="bg-amber-500 text-slate-950 font-black px-1.5 py-0.5 rounded text-[10px]">YOU</span>' : ''}</div><div class="text-sm font-bold text-white mb-1">${p.name || 'Open Slot'} ${p.isAI ? '(AI Bot)' : ''}</div><div class="text-[10px] text-slate-400">Hero: <strong class="text-amber-300">${HEROES_DATA[p.heroId || 'AZZAN']?.name || '—'}</strong></div>`;
+                grid.appendChild(slot);
+            });
+            const isHost = currentUser.uid && data.hostUid === currentUser.uid;
+            const startBtn = document.getElementById('btn-start-game');
+            if (isHost && data.phase === 'lobby') {
+                startBtn.classList.remove('hidden');
+                startBtn.innerText = 'START ONLINE MATCH 🚀';
+                startBtn.onclick = () => launchMultiplayerGame();
+            } else if (data.phase === 'lobby') {
+                startBtn.classList.add('hidden');
+            }
+            renderLobbyHeroDraft();
+        }
+
+        function renderLobbyHeroDraft() {
+            const container = document.getElementById('lobby-hero-select');
+            if (!container) return;
+            container.innerHTML = '';
+            Object.values(HEROES_DATA).forEach(hero => {
+                const btn = document.createElement('button');
+                btn.className = `p-2 rounded-lg border text-xs font-bold font-fantasy flex items-center justify-center gap-2 ${hero.colorClass}`;
+                btn.innerHTML = `${hero.avatar} ${hero.name}`;
+                btn.onclick = () => {
+                    window.state.humanHeroId = hero.id;
+                    socket.emit('selectHero', { heroId: hero.id });
+                };
+                container.appendChild(btn);
+            });
+        }
+
+        function launchMultiplayerGame() { socket.emit('startGame'); }
+
+        window.startGame = function() {
+            if (window.state.mode === 'multi') return;
+
+            document.getElementById('setup-screen').classList.add('hidden');
+            document.getElementById('game-screen').classList.remove('hidden');
+            document.getElementById('btn-reset-match').classList.remove('hidden');
+
+            const heroKeys = Object.keys(HEROES_DATA);
+            const chosenHeroKey = window.state.humanHeroId;
+            const remainingHeroKeys = heroKeys.filter(k => k !== chosenHeroKey).sort(() => Math.random() - 0.5);
+
+            window.state.players = [];
+            window.state.players.push(createPlayerObject('You', HEROES_DATA[chosenHeroKey], false, 0));
+
+            for (let i = 1; i < window.state.totalPlayersCount; i++) {
+                const aiHero = HEROES_DATA[remainingHeroKeys[i - 1]];
+                window.state.players.push(createPlayerObject(`${aiHero.name} (Bot)`, aiHero, true, i));
+            }
+
+            window.state.currentTurnIndex = 0;
+            window.state.playsRemaining = 1;
+            window.state.isGameOver = false;
+
+            clearLog();
+            logMessage(`⚔️ Single Player Match Started!`, 'bold');
+
+            window.state.players.forEach(p => {
+                for (let c = 0; c < 3; c++) drawCardForPlayer(p, true);
+            });
+
+            startTurn();
+        };
+
+        function createPlayerObject(name, heroData, isAI, index) {
+            let deck = JSON.parse(JSON.stringify(heroData.deck)).sort(() => Math.random() - 0.5);
+            return {
+                index: index, name: name, hero: heroData, isAI: isAI, hp: 10, maxHp: 10,
+                deck: deck, hand: [], discard: [], shields: []
+            };
+        }
+
+        function startTurn() {
+            if (window.state.isGameOver) return;
+            const currentPlayer = window.state.players[window.state.currentTurnIndex];
+
+            if (currentPlayer.hp <= 0) {
+                nextTurn();
+                return;
+            }
+
+            window.state.playsRemaining = 1;
+            logMessage(`--- <strong>${currentPlayer.name}</strong>'s Turn ---`, 'turn');
+
+            drawCardForPlayer(currentPlayer);
+            if (currentPlayer.hand.length === 0) {
+                for (let i = 0; i < 3; i++) drawCardForPlayer(currentPlayer, true);
+            }
+
+            updateUI();
+
+            if (currentPlayer.isAI) {
+                window.state.aiTimeout = setTimeout(() => processAITurn(), 1000);
+            }
+        }
+
+        function drawCardForPlayer(player, silent = false) {
+            if (player.deck.length === 0) {
+                if (player.discard.length === 0) return null;
+                player.deck = [...player.discard].sort(() => Math.random() - 0.5);
+                player.discard = [];
+            }
+
+            const card = player.deck.pop();
+            if (card) {
+                player.hand.push(card);
+                if (!silent) {
+                    AudioFX.playDraw();
+                    logMessage(`${player.name} drew a card.`);
+                }
+            }
+            return card;
+        }
+
+        window.playCard = function(cardIndex) {
+            if (window.state.mode === 'multi') {
+                if (window.state.currentTurnIndex !== window.state.mySlotIndex || window.state.playsRemaining <= 0 || window.state.isGameOver) return;
+                socket.emit('playCard', { cardIndex });
+                return;
+            }
+            const player = window.state.players[window.state.currentTurnIndex];
+            if (player.isAI || window.state.playsRemaining <= 0 || window.state.isGameOver) return;
+
+            const card = player.hand[cardIndex];
+            if (!card) return;
+
+            player.hand.splice(cardIndex, 1);
+            player.discard.push(card);
+            window.state.playsRemaining--;
+
+            logMessage(`<strong>${player.name}</strong> played <strong>[${card.name}]</strong>!`, 'action');
+            showPlayedCardAnimation(player, card);
+            processCardActions(player, card);
+        };
+
+        function processCardActions(player, card) {
+            const attacks = card.icons.filter(i => i === 'attack').length;
+            const shields = card.icons.filter(i => i === 'shield').length;
+            const heals = card.icons.filter(i => i === 'heal').length;
+            const draws = card.icons.filter(i => i === 'draw').length;
+            const bolts = card.icons.filter(i => i === 'bolt').length;
+
+            window.state.playsRemaining += bolts;
+            for (let i = 0; i < draws; i++) drawCardForPlayer(player);
+
+            if (heals > 0) {
+                player.hp = Math.min(player.maxHp, player.hp + heals);
+                AudioFX.playHeal();
+                createFloatingText(player.index, `+${heals} HP`, 'text-emerald-400');
+                logMessage(`${player.name} healed ${heals} HP.`, 'heal');
+            }
+
+            if (card.shieldHp > 0) {
+                player.shields.push({ cardId: card.id, name: card.name, hp: card.shieldHp, maxHp: card.shieldHp });
+                AudioFX.playShield();
+                logMessage(`${player.name} deployed shield: <strong>${card.name}</strong> (${card.shieldHp} HP).`, 'shield');
+            }
+
+            if (card.icons.includes('special_swap')) {
+                if (player.isAI) executeAzzanHpSwapAI(player);
+                else { promptAzzanHpSwap(player); return; }
+            } else if (card.icons.includes('special_full_heal')) {
+                player.hp = player.maxHp;
+                AudioFX.playSpecial();
+                createFloatingText(player.index, `FULL HEAL!`, 'text-yellow-300 font-extrabold');
+                logMessage(`✨ <strong>${player.name}</strong> restored to full 10 HP!`, 'special');
+            } else if (card.icons.includes('special_smash')) {
+                let count = 0;
+                window.state.players.forEach(p => {
+                    if (p.index !== player.index && p.hp > 0) {
+                        count += p.shields.length;
+                        p.shields = [];
+                    }
+                });
+                AudioFX.playSpecial();
+                logMessage(`💥 <strong>${player.name}</strong> smashed and destroyed ALL ${count} opponent shields!`, 'special');
+            } else if (card.icons.includes('special_steal')) {
+                AudioFX.playSpecial();
+                drawCardForPlayer(player, true);
+                drawCardForPlayer(player, true);
+                logMessage(`🗡️ <strong>${player.name}</strong> stole & drew 2 extra cards!`, 'special');
+            }
+
+            if (attacks > 0) {
+                if (player.isAI) executeAIAttack(player, attacks);
+                else { promptHumanTargeting(player, attacks); return; }
+            }
+
+            finishPlayStep();
+        }
+
+        function finishPlayStep() {
+            checkGameOver();
+            updateUI();
+
+            const player = window.state.players[window.state.currentTurnIndex];
+            if (window.state.isGameOver) return;
+
+            if (window.state.playsRemaining > 0) {
+                if (player.hand.length === 0) {
+                    nextTurn();
+                } else if (player.isAI) {
+                    window.state.aiTimeout = setTimeout(() => processAITurn(), 900);
+                } else {
+                    document.getElementById('action-prompt').innerHTML = `<span class="text-amber-400 font-bold">Bonus Action!</span> Play another card (${window.state.playsRemaining} remaining).`;
+                }
+            } else {
+                window.state.aiTimeout = setTimeout(() => nextTurn(), 600);
+            }
+        }
+
+        function nextTurn() {
+            if (window.state.isGameOver) return;
+            do {
+                window.state.currentTurnIndex = (window.state.currentTurnIndex + 1) % window.state.players.length;
+            } while (window.state.players[window.state.currentTurnIndex].hp <= 0 && getAlivePlayers().length > 1);
+
+            startTurn();
+        }
+
+        function promptHumanTargeting(attacker, damageAmount) {
+            const targets = [];
+            window.state.players.forEach(p => {
+                if (p.index !== attacker.index && p.hp > 0) {
+                    if (p.shields.length > 0) {
+                        p.shields.forEach((s, sIdx) => {
+                            targets.push({ type: 'shield', playerIndex: p.index, shieldIndex: sIdx, label: `🛡️ ${p.name}'s Shield: ${s.name} (${s.hp} HP)` });
+                        });
+                    } else {
+                        targets.push({ type: 'player', playerIndex: p.index, label: `⚔️ ${p.name} (HP: ${p.hp})` });
+                    }
+                }
+            });
+
+            if (targets.length === 0) { finishPlayStep(); return; }
+
+            const modal = document.getElementById('target-modal');
+            const list = document.getElementById('target-options-list');
+            document.getElementById('target-modal-title').innerText = `Select Target (${damageAmount} Damage)`;
+            
+            list.innerHTML = '';
+            targets.forEach(t => {
+                const btn = document.createElement('button');
+                btn.className = "w-full py-3 px-4 bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-200 font-bold text-sm rounded-xl transition text-left flex items-center justify-between border border-slate-700";
+                btn.innerHTML = `<span>${t.label}</span> <i class="fa-solid fa-crosshairs"></i>`;
+                btn.onclick = () => {
+                    modal.classList.add('hidden');
+                    applyDamageToTarget(t, damageAmount, attacker);
+                    finishPlayStep();
+                };
+                list.appendChild(btn);
+            });
+
+            modal.classList.remove('hidden');
+        }
+
+        function applyDamageToTarget(target, damage, attacker) {
+            AudioFX.playAttack();
+            const defender = window.state.players[target.playerIndex];
+
+            if (target.type === 'shield') {
+                const shield = defender.shields[target.shieldIndex];
+                if (!shield) return;
+                shield.hp -= damage;
+                logMessage(`⚔️ ${attacker.name} attacked ${defender.name}'s shield <strong>[${shield.name}]</strong> for ${damage} damage!`, 'attack');
+                createFloatingText(defender.index, `-${damage} Shield`, 'text-blue-400');
+                if (shield.hp <= 0) defender.shields.splice(target.shieldIndex, 1);
+            } else {
+                defender.hp = Math.max(0, defender.hp - damage);
+                logMessage(`⚔️ ${attacker.name} attacked <strong>${defender.name}</strong> for ${damage} damage!`, 'attack');
+                createFloatingText(defender.index, `-${damage} HP`, 'text-rose-500 font-extrabold');
+                if (defender.hp <= 0) logMessage(`💀 <strong>${defender.name}</strong> was ELIMINATED!`, 'danger');
+            }
+        }
+
+        function promptAzzanHpSwap(player) {
+            const targets = window.state.players.filter(p => p.index !== player.index && p.hp > 0);
+            if (targets.length === 0) { finishPlayStep(); return; }
+
+            const modal = document.getElementById('target-modal');
+            const list = document.getElementById('target-options-list');
+            document.getElementById('target-modal-title').innerText = `✨ Swap Hit Points!`;
+
+            list.innerHTML = '';
+            targets.forEach(t => {
+                const btn = document.createElement('button');
+                btn.className = "w-full py-3 px-4 bg-purple-900/60 hover:bg-purple-600 text-purple-100 font-bold text-sm rounded-xl transition text-left flex items-center justify-between border border-purple-700";
+                btn.innerHTML = `<span>Swap with ${t.name} (${t.hp} HP)</span> <i class="fa-solid fa-arrows-rotate"></i>`;
+                btn.onclick = () => {
+                    modal.classList.add('hidden');
+                    const temp = player.hp;
+                    player.hp = t.hp;
+                    t.hp = temp;
+                    AudioFX.playSpecial();
+                    logMessage(`🪄 <strong>${player.name}</strong> SWAPPED Hit Points with ${t.name}!`, 'special');
+                    finishPlayStep();
+                };
+                list.appendChild(btn);
+            });
+
+            modal.classList.remove('hidden');
+        }
+
+        window.cancelTargeting = function() {
+            document.getElementById('target-modal').classList.add('hidden');
+            if (window.state.mode === 'multi') socket.emit('cancelTarget');
+            else finishPlayStep();
+        };
+
+        function processAITurn() {
+            if (window.state.isGameOver) return;
+            const ai = window.state.players[window.state.currentTurnIndex];
+            if (!ai || !ai.isAI || ai.hp <= 0) return;
+
+            if (ai.hand.length === 0) { finishPlayStep(); return; }
+
+            let chosenIndex = 0;
+            let highestScore = -99;
+
+            ai.hand.forEach((card, idx) => {
+                let score = card.icons.length * 2;
+                if (ai.hp <= 4 && card.icons.includes('heal')) score += 10;
+                if (score > highestScore) { highestScore = score; chosenIndex = idx; }
+            });
+
+            const card = ai.hand[chosenIndex];
+            ai.hand.splice(chosenIndex, 1);
+            ai.discard.push(card);
+            window.state.playsRemaining--;
+
+            logMessage(`<strong>${ai.name}</strong> played <strong>[${card.name}]</strong>.`, 'action');
+            showPlayedCardAnimation(ai, card);
+            processCardActions(ai, card);
+        }
+
+        function executeAIAttack(ai, damageAmount) {
+            const opponents = window.state.players.filter(p => p.index !== ai.index && p.hp > 0);
+            if (opponents.length === 0) return;
+
+            let validTargets = [];
+            opponents.forEach(p => {
+                if (p.shields.length > 0) {
+                    p.shields.forEach((s, sIdx) => {
+                        validTargets.push({ type: 'shield', playerIndex: p.index, shieldIndex: sIdx, hp: s.hp });
+                    });
+                } else {
+                    validTargets.push({ type: 'player', playerIndex: p.index, shieldIndex: -1, hp: p.hp });
+                }
+            });
+
+            validTargets.sort((a, b) => a.hp - b.hp);
+            applyDamageToTarget(validTargets[0], damageAmount, ai);
+        }
+
+        function executeAzzanHpSwapAI(ai) {
+            const opponents = window.state.players.filter(p => p.index !== ai.index && p.hp > 0).sort((a, b) => b.hp - a.hp);
+            const target = opponents[0];
+            if (target && target.hp > ai.hp) {
+                const temp = ai.hp;
+                ai.hp = target.hp;
+                target.hp = temp;
+                AudioFX.playSpecial();
+                logMessage(`🪄 <strong>${ai.name}</strong> SWAPPED Hit Points with ${target.name}!`, 'special');
+            }
+        }
+
+        function getAlivePlayers() { return window.state.players.filter(p => p.hp > 0); }
+
+        function checkGameOver() {
+            const alive = getAlivePlayers();
+            if (alive.length <= 1) {
+                window.state.isGameOver = true;
+                const winner = alive[0] || window.state.players[0];
+
+                setTimeout(() => {
+                    document.getElementById('victory-modal').classList.remove('hidden');
+                    document.getElementById('winner-text').innerHTML = `👑 <span class="text-amber-400 font-bold">${winner.name}</span> is Victorious!`;
+                    document.getElementById('victory-stats').innerHTML = `
+                        <div class="text-slate-400">Hero: <strong class="text-white">${winner.hero.name} (${winner.hero.title})</strong></div>
+                        <div class="text-slate-400">Final HP: <strong class="text-emerald-400">${winner.hp} HP</strong></div>
+                    `;
+                }, 500);
+            }
+        }
+
+        function updateUI() {
+            if (!window.state.players || window.state.players.length === 0) return;
+            const currentPlayer = window.state.players[window.state.currentTurnIndex];
+
+            document.getElementById('current-player-name').innerText = currentPlayer.name;
+            document.getElementById('plays-left-count').innerText = window.state.playsRemaining;
+
+            const badge = document.getElementById('turn-badge');
+            badge.innerText = currentPlayer.isAI ? "Bot Turn" : (window.state.mode === 'multi' && window.state.currentTurnIndex !== window.state.mySlotIndex ? `${currentPlayer.name}'s Turn` : "Your Turn");
+
+            const human = window.state.players[window.state.mySlotIndex || 0];
+            document.getElementById('human-name').innerText = human.name;
+            document.getElementById('human-class-title').innerText = human.hero.title;
+            document.getElementById('human-avatar').innerText = human.hero.avatar;
+            document.getElementById('human-avatar').className = `w-10 h-10 rounded-xl border-2 flex items-center justify-center font-bold text-lg shadow-md shrink-0 ${human.hero.colorClass}`;
+
+            const hpPercent = Math.max(0, (human.hp / human.maxHp) * 100);
+            document.getElementById('human-hp-bar').style.width = `${hpPercent}%`;
+            document.getElementById('human-hp-text').innerText = `${human.hp} / ${human.maxHp} HP`;
+
+            document.getElementById('human-deck-count').innerText = human.deck.length;
+            document.getElementById('human-discard-count').innerText = human.discard.length;
+
+            const humanShieldsList = document.getElementById('human-shields-list');
+            humanShieldsList.innerHTML = human.shields.length === 0 ? 
+                `<span class="text-xs text-slate-600 italic">No active shields deployed</span>` : 
+                human.shields.map(s => `
+                    <div class="px-2.5 py-1 rounded-lg bg-blue-950 border border-blue-600 text-blue-200 text-xs flex items-center gap-1.5 shadow-md">
+                        <i class="fa-solid fa-shield-halved text-blue-400"></i>
+                        <span class="font-bold">${s.name}</span>
+                        <span class="bg-blue-800 px-1.5 py-0.2 rounded text-[10px] font-black">${s.hp} HP</span>
+                    </div>
+                `).join('');
+
+            const humanHandContainer = document.getElementById('human-hand');
+            humanHandContainer.innerHTML = '';
+            human.hand.forEach((card, idx) => {
+                const isMyTurn = window.state.currentTurnIndex === (window.state.mySlotIndex || 0);
+                const cardEl = renderCardDOM(card, idx, isMyTurn && window.state.playsRemaining > 0);
+                humanHandContainer.appendChild(cardEl);
+            });
+
+            renderOpponentsUI();
+        }
+
+        function renderOpponentsUI() {
+            const container = document.getElementById('opponents-container');
+            container.innerHTML = '';
+
+            const opponents = window.state.players.filter(p => p.index !== (window.state.mySlotIndex || 0));
+            opponents.forEach(op => {
+                const isCurrentTurn = window.state.currentTurnIndex === op.index;
+                const isDead = op.hp <= 0;
+
+                const cardDom = document.createElement('div');
+                cardDom.className = `bg-slate-900/90 border-2 rounded-2xl p-3 shadow-xl flex flex-col justify-between transition-all duration-300 relative overflow-hidden ${
+                    isDead ? 'opacity-40 grayscale border-slate-800' : isCurrentTurn ? 'active-turn-ring border-amber-400' : 'border-slate-800'
+                }`;
+
+                const hpPercent = Math.max(0, (op.hp / op.maxHp) * 100);
+
+                cardDom.innerHTML = `
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center gap-2">
+                            <span class="text-2xl">${op.hero.avatar}</span>
+                            <div>
+                                <h4 class="font-extrabold text-xs sm:text-sm text-white font-fantasy">${op.name}</h4>
+                                <span class="text-[10px] text-amber-400">${op.hero.title}</span>
+                            </div>
+                        </div>
+                        ${isDead ? '<span class="text-xs font-black text-rose-500 uppercase px-2 py-0.5 rounded bg-rose-950/80">Dead</span>' : ''}
+                    </div>
+                    <div class="mb-2">
+                        <div class="flex justify-between text-[10px] font-bold mb-0.5">
+                            <span class="text-slate-400">HP</span>
+                            <span class="text-slate-300">${op.hp} / ${op.maxHp}</span>
+                        </div>
+                        <div class="w-full h-2.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                            <div class="h-full bg-emerald-500 transition-all duration-300" style="width: ${hpPercent}%;"></div>
+                        </div>
+                    </div>
+                    <div class="min-h-[24px] flex flex-wrap gap-1 mb-2">
+                        ${op.shields.map(s => `
+                            <span class="px-2 py-0.5 rounded bg-blue-950 border border-blue-700 text-blue-300 text-[10px]">
+                                🛡️ ${s.name} (${s.hp})
+                            </span>
+                        `).join('')}
+                    </div>
+                `;
+                container.appendChild(cardDom);
+            });
+        }
+
+        function renderCardDOM(card, index, canPlay) {
+            const cardEl = document.createElement('div');
+            cardEl.className = `card-item w-28 sm:w-36 h-40 sm:h-52 rounded-xl border-2 bg-slate-900 flex flex-col justify-between p-2 sm:p-2.5 shadow-xl relative cursor-pointer select-none shrink-0 ${
+                canPlay ? 'border-amber-400/80 hover:border-amber-300 bg-gradient-to-b from-slate-900 to-slate-950' : 'border-slate-800 opacity-60 cursor-not-allowed disabled'
+            }`;
+
+            if (canPlay) cardEl.onclick = () => window.playCard(index);
+
+            const iconsHtml = card.icons.map(icon => {
+                switch(icon) {
+                    case 'attack': return '<div class="w-5 h-5 rounded-full bg-rose-950 border border-rose-600 text-rose-400 flex items-center justify-center text-[10px]"><i class="fa-solid fa-sword"></i></div>';
+                    case 'shield': return '<div class="w-5 h-5 rounded-full bg-blue-950 border border-blue-600 text-blue-400 flex items-center justify-center text-[10px]"><i class="fa-solid fa-shield-halved"></i></div>';
+                    case 'heal': return '<div class="w-5 h-5 rounded-full bg-emerald-950 border border-emerald-600 text-emerald-400 flex items-center justify-center text-[10px]"><i class="fa-solid fa-heart"></i></div>';
+                    case 'draw': return '<div class="w-5 h-5 rounded-full bg-purple-950 border border-purple-600 text-purple-400 flex items-center justify-center text-[10px]"><i class="fa-solid fa-cards"></i></div>';
+                    case 'bolt': return '<div class="w-5 h-5 rounded-full bg-amber-950 border border-amber-500 text-amber-400 flex items-center justify-center text-[10px]"><i class="fa-solid fa-bolt"></i></div>';
+                    default: return '<div class="w-5 h-5 rounded-full bg-yellow-950 border border-yellow-500 text-yellow-300 flex items-center justify-center text-[10px]"><i class="fa-solid fa-wand-magic-sparkles"></i></div>';
+                }
+            }).join('');
+
+            cardEl.innerHTML = `
+                <div class="flex items-center gap-1 flex-wrap mb-1">${iconsHtml}</div>
+                <div class="my-auto text-center">
+                    <h5 class="font-extrabold text-xs sm:text-sm text-slate-100 font-fantasy leading-tight mb-1">${card.name}</h5>
+                    <p class="text-[9px] sm:text-[10px] text-slate-300/90 leading-tight">${card.text}</p>
+                </div>
+                <div class="text-[9px] text-center font-bold text-amber-400/80 uppercase tracking-wider pt-1 border-t border-slate-800">
+                    ${card.shieldHp > 0 ? `Shield ${card.shieldHp} HP` : 'Action Card'}
+                </div>
+            `;
+            return cardEl;
+        }
+
+        function showPlayedCardAnimation(player, card) {
+            const arena = document.getElementById('played-cards-stack');
+            arena.innerHTML = '';
+            const playedEl = document.createElement('div');
+            playedEl.className = "px-4 py-2.5 bg-slate-900 border-2 border-amber-400 rounded-xl shadow-2xl flex items-center gap-3";
+            playedEl.innerHTML = `
+                <span class="text-2xl">${player.hero.avatar}</span>
+                <div>
+                    <div class="text-xs text-amber-400 font-bold">${player.name} played</div>
+                    <div class="text-sm font-black text-white font-fantasy">${card.name}</div>
+                </div>
+            `;
+            arena.appendChild(playedEl);
+        }
+
+        function createFloatingText(playerIndex, text, colorClass) {
+            const container = document.getElementById('damage-float-layer');
+            const floatEl = document.createElement('div');
+            floatEl.className = `absolute text-lg sm:text-2xl font-black font-fantasy damage-float ${colorClass}`;
+            floatEl.style.left = `${30 + Math.random() * 40}%`;
+            floatEl.style.top = `${30 + Math.random() * 20}%`;
+            floatEl.innerText = text;
+            container.appendChild(floatEl);
+            setTimeout(() => floatEl.remove(), 1100);
+        }
+
+        function logMessage(msg, type = 'normal', syncToCloud = true) {
+            const logContent = document.getElementById('log-content');
+            if (!logContent) return;
+
+            const entry = document.createElement('div');
+            let typeStyle = 'border-slate-800 text-slate-300';
+            if (type === 'turn') typeStyle = 'border-amber-500/40 text-amber-300 font-bold bg-amber-950/20 px-2 py-1 rounded';
+            else if (type === 'action') typeStyle = 'border-slate-700 text-slate-200';
+            else if (type === 'attack') typeStyle = 'border-rose-900/40 text-rose-300';
+            else if (type === 'heal') typeStyle = 'border-emerald-900/40 text-emerald-300';
+            else if (type === 'shield') typeStyle = 'border-blue-900/40 text-blue-300';
+            else if (type === 'special') typeStyle = 'border-purple-900/40 text-purple-300 font-semibold';
+            else if (type === 'danger') typeStyle = 'border-rose-800 text-rose-400 font-bold bg-rose-950/30';
+
+            entry.className = `pb-1 border-b text-[11px] leading-snug ${typeStyle}`;
+            entry.innerHTML = msg;
+
+            logContent.appendChild(entry);
+            logContent.scrollTop = logContent.scrollHeight;
+
+            if (syncToCloud && window.state.mode === 'multi' && window.state.roomCode) {
+                const roomRef = getRoomDocRef(window.state.roomCode);
+                getDoc(roomRef).then(snap => {
+                    if (snap.exists()) {
+                        const data = snap.data();
+                        data.logs.push(msg);
+                        if (data.logs.length > 30) data.logs.shift();
+                        setDoc(roomRef, data);
+                    }
+                });
+            }
+        }
+
+        window.clearLog = function() {
+            const logContent = document.getElementById('log-content');
+            if (logContent) logContent.innerHTML = '';
+        };
+
+        window.resetRoomMatch = function() {
+            if (window.state.aiTimeout) clearTimeout(window.state.aiTimeout);
+
+            document.getElementById('victory-modal').classList.add('hidden');
+            document.getElementById('target-modal').classList.add('hidden');
+            document.getElementById('rules-modal').classList.add('hidden');
+
+            if (window.state.mode === 'multi' && window.state.roomCode) {
+                socket.emit('startGame');
+            } else {
+                window.startGame();
+            }
+        };
+
+        window.showRulesModal = function() { document.getElementById('rules-modal').classList.remove('hidden'); };
+        window.hideRulesModal = function() { document.getElementById('rules-modal').classList.add('hidden'); };
+    </script>
+</body>
+</html>
