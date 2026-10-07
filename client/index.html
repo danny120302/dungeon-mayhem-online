@@ -571,6 +571,8 @@
             window.state.roomCode = payload.roomCode;
             window.state.mySlotIndex = payload.mySlotIndex;
             window.state.hostUid = payload.hostUid;
+            const me = (payload.players || [])[payload.mySlotIndex];
+            if (me && me.heroId) window.state.humanHeroId = me.heroId;
             window.state.players = (payload.players || []).map((p, idx) => ({
                 index: idx,
                 name: p.name,
@@ -689,11 +691,18 @@
             const container = document.getElementById('lobby-hero-select');
             if (!container) return;
             container.innerHTML = '';
+            const takenByOthers = new Set((window.state.players || [])
+                .filter((p, idx) => p && p.heroId && idx !== window.state.mySlotIndex)
+                .map(p => p.heroId));
             Object.values(HEROES_DATA).forEach(hero => {
+                const taken = takenByOthers.has(hero.id);
+                const selected = window.state.humanHeroId === hero.id;
                 const btn = document.createElement('button');
-                btn.className = `p-2 rounded-lg border text-xs font-bold font-fantasy flex items-center justify-center gap-2 ${hero.colorClass}`;
-                btn.innerHTML = `${hero.avatar} ${hero.name}`;
+                btn.disabled = taken;
+                btn.className = `p-2 rounded-lg border text-xs font-bold font-fantasy flex items-center justify-center gap-2 ${hero.colorClass} ${taken ? 'opacity-35 cursor-not-allowed' : selected ? 'ring-2 ring-amber-300' : ''}`;
+                btn.innerHTML = `${hero.avatar} ${hero.name}${taken ? ' (TAKEN)' : selected ? ' ✓' : ''}`;
                 btn.onclick = () => {
+                    if (taken) return;
                     window.state.humanHeroId = hero.id;
                     socket.emit('selectHero', { heroId: hero.id });
                 };

@@ -111,15 +111,20 @@ function finishAction(room, player) {
   if (room.playsRemaining<=0 || !player.hand.length) nextTurn(room);
 }
 function startGame(room) {
-  const occupied=room.players.filter(Boolean);
-  if (occupied.length<2) return false;
+  const occupied=room.players.filter(p => p && p.uid);
+  if (occupied.length < 2) return { ok:false, reason:`Only ${occupied.length} player(s) are connected. At least 2 players are required.` };
   const heroes=new Set();
-  for (const p of occupied) { if (!HEROES[p.heroId] || heroes.has(p.heroId)) return false; heroes.add(p.heroId); }
+  for (const p of occupied) {
+    p.heroId = String(p.heroId || '').trim().toUpperCase();
+    if (!HEROES[p.heroId]) return { ok:false, reason:`${p.name || 'A player'} has not selected a valid hero.` };
+    if (heroes.has(p.heroId)) return { ok:false, reason:`Two players have selected ${HEROES[p.heroId].name}. Each player must choose a different hero.` };
+    heroes.add(p.heroId);
+  }
   room.phase='playing'; room.currentTurnIndex=0; room.playsRemaining=1; room.pending=null;
   room.logs.push('🎮 Host launched the match! Battle Begins!');
   for (const p of occupied) { p.hp=START_HP; p.deck=shuffle(HEROES[p.heroId].deck); p.hand=[]; p.discard=[]; p.shields=[]; draw(p,3); }
   const first=room.players[0]; if (first) { draw(first,1); room.logs.push(`--- <strong>${first.name}</strong>'s Turn ---`); }
-  return true;
+  return { ok:true };
 }
 function handlePlayCard(room, socket, cardIndex) {
   const p=room.players[room.currentTurnIndex];
@@ -163,7 +168,12 @@ io.on('connection', socket => {
     const room=rooms.get(String(roomCode||'').toUpperCase()); if(!room) return error(socket,'Room not found.');
     if(room.phase!=='lobby') return error(socket,'That match has already started.');
     const idx=room.players.findIndex(p=>!p); if(idx<0) return error(socket,'Room is full.');
-    room.players[idx]={uid:socket.id,name:playerName||`Player ${idx+1}`,heroId,index:idx,hp:START_HP,deck:[],hand:[],discard:[],shields:[]};
+    const requestedHero=String(heroId||'').trim().toUpperCase();
+    const taken=new Set(room.players.filter(Boolean).map(p=>String(p.heroId||'').trim().toUpperCase()));
+    const fallback=Object.keys(HEROES).find(id=>!taken.has(id));
+    const selectedHero=HEROES[requestedHero] && !taken.has(requestedHero) ? requestedHero : fallback;
+    if(!selectedHero) return error(socket,'No different heroes are available in this room.');
+    room.players[idx]={uid:socket.id,name:playerName||`Player ${idx+1}`,heroId:selectedHero,index:idx,hp:START_HP,deck:[],hand:[],discard:[],shields:[]};
     room.logs.push(`${room.players[idx].name} joined Slot ${idx+1}.`); socket.join(room.code); broadcast(room);
   });
   socket.on('selectHero', ({heroId}) => {
@@ -174,7 +184,8 @@ io.on('connection', socket => {
   socket.on('startGame', () => {
     const room=[...rooms.values()].find(r=>r.players.some(p=>p&&p.uid===socket.id)); if(!room) return;
     if(room.hostUid!==socket.id) return error(socket,'Only the host can start the match.');
-    if(!startGame(room)) return error(socket,'You need at least 2 players and each player must have a different hero.');
+    const result = startGame(room);
+    if (!result.ok) return error(socket, result.reason);
     broadcast(room);
   });
   socket.on('playCard', ({cardIndex}) => {
