@@ -1,9 +1,0 @@
-{
-  "name": "dungeon-mayhem-online",
-  "version": "1.0.0",
-  "private": true,
-  "description": "Dungeon Mayhem web game with online rooms and server-side multiplayer state",
-  "main": "server/server.js",
-  "scripts": { "start": "node server/server.js" },
-  "dependencies": { "express": "^5.1.0", "socket.io": "^4.8.1" }
-}

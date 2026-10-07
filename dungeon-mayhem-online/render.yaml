@@ -1,7 +1,0 @@
-services:
-  - type: web
-    name: dungeon-mayhem-online
-    runtime: node
-    buildCommand: npm install
-    startCommand: npm start
-    autoDeploy: true
