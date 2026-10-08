@@ -12,6 +12,12 @@ app.use(express.static(path.join(__dirname, '..', 'client')));
 const rooms = new Map();
 const MAX_PLAYERS = 4;
 const START_HP = 10;
+const MAX_NAME_LENGTH = 20;
+
+function cleanPlayerName(value, fallback = 'Player') {
+  const name = String(value || '').trim().replace(/\s+/g, ' ').slice(0, MAX_NAME_LENGTH);
+  return name || fallback;
+}
 
 function roomCode() {
   let code;
@@ -169,13 +175,13 @@ function handlePlayCard(room, socket, cardIndex) {
 }
 
 io.on('connection', socket => {
-  socket.on('createRoom', ({playerName='Player 1 (Host)',heroId='AZZAN'}) => {
+  socket.on('createRoom', ({playerName,heroId='AZZAN'}) => {
     const code=roomCode();
-    const p={uid:socket.id,name:playerName,heroId, index:0,hp:START_HP,deck:[],hand:[],discard:[],shields:[]};
+    const p={uid:socket.id,name:cleanPlayerName(playerName,'Host'),heroId, index:0,hp:START_HP,deck:[],hand:[],discard:[],shields:[]};
     const room={code,hostUid:socket.id,phase:'lobby',currentTurnIndex:0,playsRemaining:1,pending:null,players:[p,null,null,null],logs:[`Room ${code} created. Waiting for players...`]};
     rooms.set(code,room); socket.join(code); broadcast(room);
   });
-  socket.on('joinRoom', ({roomCode,playerName='Player',heroId='LIA'}) => {
+  socket.on('joinRoom', ({roomCode,playerName,heroId='LIA'}) => {
     const room=rooms.get(String(roomCode||'').toUpperCase()); if(!room) return error(socket,'Room not found.');
     if(room.phase!=='lobby') return error(socket,'That match has already started.');
     const idx=room.players.findIndex(p=>!p); if(idx<0) return error(socket,'Room is full.');
@@ -184,7 +190,7 @@ io.on('connection', socket => {
     const fallback=Object.keys(HEROES).find(id=>!taken.has(id));
     const selectedHero=HEROES[requestedHero] && !taken.has(requestedHero) ? requestedHero : fallback;
     if(!selectedHero) return error(socket,'No different heroes are available in this room.');
-    room.players[idx]={uid:socket.id,name:playerName||`Player ${idx+1}`,heroId:selectedHero,index:idx,hp:START_HP,deck:[],hand:[],discard:[],shields:[]};
+    room.players[idx]={uid:socket.id,name:cleanPlayerName(playerName,`Player ${idx+1}`),heroId:selectedHero,index:idx,hp:START_HP,deck:[],hand:[],discard:[],shields:[]};
     room.logs.push(`${room.players[idx].name} joined Slot ${idx+1}.`); socket.join(room.code); broadcast(room);
   });
   socket.on('selectHero', ({heroId}) => {

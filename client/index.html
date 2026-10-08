@@ -152,6 +152,12 @@
 
             <!-- Multiplayer Lobby Panel -->
             <div id="panel-multi-config" class="hidden bg-slate-900/80 border border-slate-800 p-4 md:p-6 rounded-2xl shadow-2xl mb-8">
+                <div class="mb-6 bg-slate-950/60 p-5 rounded-xl border border-slate-800">
+                    <label for="input-player-name" class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Your Player Name</label>
+                    <input id="input-player-name" type="text" maxlength="20" autocomplete="nickname" placeholder="Enter your name" class="w-full bg-slate-900 border border-slate-700 px-4 py-3 rounded-xl text-white font-bold focus:outline-none focus:border-amber-400" value="">
+                    <p class="text-[11px] text-slate-500 mt-2">This name will be shown to everyone in the lobby and during the match.</p>
+                </div>
+
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div class="bg-slate-950/60 p-5 rounded-xl border border-slate-800 flex flex-col justify-between">
                         <div>
@@ -647,16 +653,41 @@
             modal.classList.remove('hidden');
         });
 
+        function getPlayerName() {
+            const input = document.getElementById('input-player-name');
+            const name = (input?.value || '').trim().replace(/\s+/g, ' ');
+            if (!name) return null;
+            return name.slice(0, 20);
+        }
+
+        function rememberPlayerName(name) {
+            try { localStorage.setItem('dungeonMayhemPlayerName', name); } catch (e) {}
+        }
+
+        function loadPlayerName() {
+            try {
+                const saved = localStorage.getItem('dungeonMayhemPlayerName');
+                if (saved) document.getElementById('input-player-name').value = saved;
+            } catch (e) {}
+        }
+        loadPlayerName();
+
         window.createMultiplayerRoom = function() {
             if (!multiplayerConnected) return alert('Connecting to the game server...');
-            socket.emit('createRoom', { playerName: 'Player 1 (Host)', heroId: window.state.humanHeroId });
+            const playerName = getPlayerName();
+            if (!playerName) return alert('Please enter a player name first.');
+            rememberPlayerName(playerName);
+            socket.emit('createRoom', { playerName, heroId: window.state.humanHeroId });
         };
 
         window.joinMultiplayerRoom = function() {
             if (!multiplayerConnected) return alert('Connecting to the game server...');
             const code = document.getElementById('input-room-code').value.trim().toUpperCase();
             if (!code) return alert('Please enter a room code.');
-            socket.emit('joinRoom', { roomCode: code, playerName: 'Player' });
+            const playerName = getPlayerName();
+            if (!playerName) return alert('Please enter a player name first.');
+            rememberPlayerName(playerName);
+            socket.emit('joinRoom', { roomCode: code, playerName, heroId: window.state.humanHeroId });
         };
 
         window.leaveMultiplayerRoom = function() {
